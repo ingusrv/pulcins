@@ -13,56 +13,54 @@
         dienas: string[];
     };
 
-    type SkolenuDati = {
+    type DienasDati = {
         grupas: string[];
         skoleni: Skolens[];
     };
 
-    let dati: Dati;
+    let datuVersija: number;
+    let dienas: string[] = [];
     let grupas: string[] = [];
     let skoleni: Skolens[] = [];
-    let newGroupDate: string;
-    let currentGrupa: string;
+
     let currentDate: string;
-    $: loadDataFromDate(currentDate);
+    $: loadData(currentDate);
+    let currentGrupa: string;
+
+    let newDate: string;
     let skolensName: string = "";
 
-    const storedItem = window.localStorage.getItem("pulcins");
+    // ielādējam saglabātos datus, ja tādi ir
+    const storedItem = localStorage.getItem("pulcins");
     if (storedItem) {
         const parsed = JSON.parse(storedItem);
-        console.log("datu versija", parsed.versija);
+        console.log("saglabāto datu versija", parsed.versija);
         // migrācija
         if (parsed.versija === 1) {
-            dati = {
-                versija: 2,
-                dienas: [],
-            };
+            datuVersija = 2;
+            dienas = [];
             grupas = parsed.grupas;
             skoleni = parsed.skoleni;
         } else {
-            dati = {
-                versija: parsed.versija,
-                dienas: parsed.dienas,
-            };
+            datuVersija = parsed.versija;
+            dienas = parsed.dienas;
+            currentDate = dienas[dienas.length - 1];
         }
-
-        currentDate = dati.dienas[dati.dienas.length - 1];
     } else {
-        console.log(
-            "Skolenu saraksts netika atrasts! Tiek izveidots jauns saraksts.",
-        );
-        dati = {
-            versija: 2,
-            dienas: [],
-        };
+        console.log("Saglabātie dati netika atrasti!");
+        datuVersija = 2;
+        dienas = [];
+        grupas = [];
+        skoleni = [];
     }
 
-    function loadDataFromDate(date: string) {
-        console.log(date);
+    function loadData(date: string) {
+        console.log("lādējam datus no", date);
         if (!date) {
-            console.log("datums nav pareizs");
+            console.log("nav datuma");
             return;
         }
+
         const d = new Date(date);
         const item = localStorage.getItem(`pulcins=${d.toDateString()}`);
         if (!item) {
@@ -70,48 +68,142 @@
             return;
         }
 
-        const parsed = JSON.parse(item) as SkolenuDati;
+        const parsed = JSON.parse(item) as DienasDati;
         grupas = parsed.grupas;
         skoleni = parsed.skoleni;
-        currentGrupa = parsed.grupas[0];
+
+        // ja ielādētajos datos ir grupa kura sakrīt ar
+        // esošo izvēli, tad arī ielādējam tās grupas skolēnus
+        const found = grupas.find((g) => g === currentGrupa);
+        if (found) {
+            currentGrupa = currentGrupa;
+        } else {
+            currentGrupa = parsed.grupas[0];
+        }
     }
 
-    function createNewDay() {
-        if (!newGroupDate) {
+    function storeData(date: string) {
+        console.log("saglabājam datus dienai", date);
+        const d = new Date(date);
+
+        // ja tajā dienā jau kaut kas ir saglabāts
+        const existingItem = localStorage.getItem(
+            `pulcins=${d.toDateString()}`,
+        );
+        if (existingItem) {
+            const parsed = JSON.parse(existingItem) as DienasDati;
+            const existingGroup = parsed.grupas.find((e) => e === currentGrupa);
+            if (existingGroup) {
+                console.log("pārrakstām datus");
+                // visi vecie skolēni
+                const previousSkoleni = parsed.skoleni.filter(
+                    (s) => s.grupa !== currentGrupa,
+                );
+                // skolēni, kurus jāpārraksta
+                const grupasSkoleni = skoleni.filter(
+                    (s) => s.grupa === currentGrupa,
+                );
+                const dienasDati: DienasDati = {
+                    grupas: parsed.grupas,
+                    skoleni: [...previousSkoleni, ...grupasSkoleni],
+                };
+                localStorage.setItem(
+                    `pulcins=${d.toDateString()}`,
+                    JSON.stringify(dienasDati),
+                );
+
+                let dati: Dati = {
+                    versija: datuVersija,
+                    dienas: dienas,
+                };
+                localStorage.setItem("pulcins", JSON.stringify(dati));
+                return;
+            }
+
+            // neatrada grupu
+            const grupasSkoleni = skoleni.filter(
+                (s) => s.grupa === currentGrupa,
+            );
+            const dienasDati: DienasDati = {
+                grupas: [...parsed.grupas, currentGrupa],
+                skoleni: [...parsed.skoleni, ...grupasSkoleni],
+            };
+            localStorage.setItem(
+                `pulcins=${d.toDateString()}`,
+                JSON.stringify(dienasDati),
+            );
+            let dati: Dati = {
+                versija: datuVersija,
+                dienas: dienas,
+            };
+            localStorage.setItem("pulcins", JSON.stringify(dati));
+            return;
+        }
+
+        // vispār nav bijusi tāda diena
+        const dienasDati: DienasDati = {
+            grupas: [currentGrupa],
+            skoleni: [...skoleni],
+        };
+        localStorage.setItem(
+            `pulcins=${d.toDateString()}`,
+            JSON.stringify(dienasDati),
+        );
+        let dati: Dati = {
+            versija: datuVersija,
+            dienas: dienas,
+        };
+        localStorage.setItem("pulcins", JSON.stringify(dati));
+    }
+
+    function newDateEntry() {
+        console.log("izveidojam ierakstu jaunam datumam", newDate);
+
+        if (!newDate) {
             alert("Datums nevar būt tukšs");
             return;
         }
 
-        // pēdējās saglabātās dienas datums
-        const d = new Date(dati.dienas[dati.dienas.length - 1]);
-        currentDate = d.toDateString();
+        const nd = new Date(newDate);
 
-        // dienas datums, kur jaunie dati tiks saglabāti
-        const dc = new Date(newGroupDate);
-        dati.dienas = [...dati.dienas, dc.toDateString()];
-        currentDate = dc.toDateString();
-        skoleni.forEach((s) => (s.ieradies = false));
-        skoleni = skoleni;
+        const saveCurrent = confirm(
+            `Visi nesaglabātie dati tiks zaudēti?\nVai vēlaties saglabāt?`,
+        );
+        if (saveCurrent) {
+            storeData(currentDate);
+        }
 
-        storeData();
-    }
+        const existingItem = localStorage.getItem(
+            `pulcins=${nd.toDateString()}`,
+        );
+        if (existingItem) {
+            const parsed = JSON.parse(existingItem) as DienasDati;
+            const existingGroup = parsed.grupas.find((e) => e === currentGrupa);
+            if (existingGroup) {
+                const overwrite = confirm(
+                    `Dienā "${nd.toLocaleDateString("lv")}" jau eksistē dati grupai "${currentGrupa}"\nVai vēlaties pārrakstīt šos datus?`,
+                );
+                if (!overwrite) {
+                    return;
+                }
+            }
+        } else {
+            dienas = [...dienas, nd.toDateString()];
+        }
 
-    function storeData() {
-        let v: SkolenuDati = {
-            grupas: grupas,
-            skoleni: skoleni,
-        };
+        skoleni = skoleni.map((s) => {
+            s.ieradies = false;
+            return s;
+        });
 
-        const d = new Date(currentDate);
-        localStorage.setItem(`pulcins=${d.toDateString()}`, JSON.stringify(v));
-
-        localStorage.setItem("pulcins", JSON.stringify(dati));
-        console.log("dati saglabāti");
+        storeData(nd.toDateString());
+        currentDate = nd.toDateString();
+        alert("Diena izveidota");
     }
 
     function save() {
-        storeData();
-        window.alert("Dati saglabāti");
+        storeData(currentDate);
+        alert("Dati saglabāti");
     }
 
     function addGroup() {
@@ -132,8 +224,8 @@
 
     function deleteGroup() {
         const groupName = prompt("Ievadi grupas nosakumu");
-        if (groupName == null) {
-            window.alert("Grupas nosaukums nedrīkst būt tukšs");
+        if (!groupName) {
+            alert("Grupas nosaukums nedrīkst būt tukšs");
             return;
         }
 
@@ -166,7 +258,7 @@
 
         console.log("jauns skolēns:", skolensName, "grupā:", currentGrupa);
         const skolens: Skolens = {
-            id: window.crypto.randomUUID(),
+            id: crypto.randomUUID(),
             vards: skolensName,
             grupa: currentGrupa,
             ieradies: false,
@@ -211,8 +303,8 @@
         <button on:click={addGroup}>Jauna grupa</button>
         <button on:click={deleteGroup}>Dzēst grupu</button>
         <div class="line">
-            <input type="date" bind:value={newGroupDate} />
-            <button on:click={createNewDay}>Jauna diena</button>
+            <input type="date" bind:value={newDate} />
+            <button on:click={newDateEntry}>Jauna diena</button>
         </div>
         <div class="line">
             <input
@@ -224,7 +316,7 @@
         </div>
         <div class="line">
             <select name="date" id="date" bind:value={currentDate}>
-                {#each dati.dienas as diena}
+                {#each dienas as diena}
                     <option value={diena}>
                         {new Date(diena).toLocaleDateString("lv")}
                     </option>
